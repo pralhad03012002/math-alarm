@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Permissions. Every one of these is load-bearing for "the alarm actually rings".
+      No network permission is declared: the app is fully offline (BUILD_SPECS §0).
+      Nothing here, and no dependency, may ever introduce one.
+    -->
+
+    <!--
+      Exact alarms. On API 33+ USE_EXACT_ALARM is granted at install to genuine alarm-clock apps
+      and cannot be revoked by the user, which is exactly our case. On API 31-32 that permission
+      does not exist yet, so SCHEDULE_EXACT_ALARM covers those two releases and is capped at 32 so
+      the two are never both in force. Below API 31 neither is required.
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+
+    <!-- The foreground-service notification. Runtime grant on API 33+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- The only way to put the alarm UI over the lock screen. API 34 restricted this to
+         alarm and calling apps; an alarm clock is the sanctioned use case. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Reboot wipes every AlarmManager registration; BootReceiver puts them back. Also what
+         lets us receive LOCKED_BOOT_COMPLETED before the first unlock. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Keep the process alive and audible while ringing, plus the type-specific permission
+         Android 14+ requires to match AlarmService's android:foregroundServiceType. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+    <!-- Hold the CPU from the moment the alarm fires until it is dismissed. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Vibration alongside the audio, honoring the alarm's vibrate flag. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+      BRAINSTORM §5.4 / §6.2. Needed only to *offer* the battery-optimization exemption dialog
+      (Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS). Without it that action cannot be
+      launched at all and the user has to find the setting by hand on every Android build.
+      It is user-initiated and explained first, which is the condition the Play policy attaches, and
+      an alarm clock whose whole function is to run after hours of idleness is the sanctioned case.
+      The app never calls isIgnoringBatteryOptimizations to *gate* anything — it only reports it.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!--
+      Module 3 added exactly one permission (the battery one above) and no network permission of any
+      kind; the app is still fully offline, and no dependency was added that could introduce one
+      (BUILD_SPECS §0). The word itself is kept out of this file so a grep of the merged manifest
+      stays clean.
+    -->
+
+    <!--
+      API 30+ hides other packages from this app entirely, including from `resolveActivity`. The
+      battery screen checks whether an OEM settings activity exists *before* launching it, and
+      without these declarations every check would report "absent" on every device and the deep
+      links would never be offered. Visibility only — the app never starts, queries or reads
+      anything else from these packages, and a missing one is the normal case.
+      Kept in sync with OemBattery.allPackages().
+    -->
+    <queries>
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.miui.powerkeeper" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.coloros.oppoguardelf" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.vivo.permissionmanager" />
+        <package android:name="com.huawei.systemmanager" />
+        <package android:name="com.samsung.android.lool" />
+        <package android:name="com.samsung.android.sm" />
+    </queries>
+
+    <!--
+      allowBackup is **false on purpose** (BUILD_SPECS §4b item 5). It was true only because that is
+      the platform default, and for this app the default is the wrong way round.
+
+      The hazard is specific to an alarm clock: a restored row says `enabled` while the new device
+      has no `AlarmManager` registration for it at all — registrations are process- and
+      boot-scoped and are never part of a backup — so **the alarm looks armed in the list and
+      silently never fires.** That is this app's single worst failure mode, and it is worse than
+      having no alarm set, because the user has no reason to doubt it. Module 3's reconcile on app
+      open does self-heal it, but only if the user opens the app; someone who has just restored a
+      phone has no reason to open an alarm app before going to bed, and the first thing they would
+      learn is that it did not go off.
+
+      What enabling it would buy, weighed honestly: almost nothing, today. The alarm database and
+      the "last fired" record both live in **device-protected storage**, which auto-backup does not
+      cover (change log, 2026-10-09), so a restore would carry across exactly one credential-encrypted
+      file — `app_settings`, whose only key is `onboarding_seen`. That is the worst possible subset:
+      the new device would skip the permissions walkthrough it genuinely needs and restore no alarms
+      at all. So "lose the user's alarms on device transfer" is not a cost being paid here; those
+      alarms are not transferable either way, and the user re-creating them on the new phone is also
+      what walks them back through exact-alarm and battery-optimization setup that is per-device
+      anyway.
+
+      So the choice is deliberate rather than defaulted, and it stays correct if the storage story
+      changes: if a later version ever moves alarm rows into credential-encrypted storage, this flag
+      being false is what keeps a restore from manufacturing a list full of alarms that look armed
+      and are not. Re-enabling it would require a restore-side reconcile that re-books every enabled
+      row *before* the user opens the app, and there is no such hook — which is the whole argument.
+      Note this also turns off device-to-device transfer for the app, which is the same trade for the
+      same reason.
+    -->
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MathAlarm">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          The alarm UI. Launched only by AlarmService (full-screen intent), hence exported="false".
+          showWhenLocked/turnScreenOn are declared here as well as set in code, so the window
+          manager knows before the activity is created. Its own task with no affinity to MainActivity
+          and excluded from recents, so dismissing the alarm never lands the user inside the app's
+          normal back stack. directBootAware so it can run before the first unlock after a reboot.
+        -->
+        <activity
+            android:name=".ui.AlarmRingActivity"
+            android:directBootAware="true"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.MathAlarm.Alarm"
+            android:turnScreenOn="true" />
+
+        <!--
+          Owns the wake lock, the audio and the vibration. foregroundServiceType="mediaPlayback"
+          because Android 14+ requires a declared type and there is no "alarm" type; mediaPlayback
+          is the closest honest fit for a looping alarm tone and is matched by the
+          FOREGROUND_SERVICE_MEDIA_PLAYBACK permission above.
+        -->
+        <service
+            android:name=".alarm.AlarmService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!--
+          Triggered only by our own PendingIntent from AlarmManager, so exported="false".
+        -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:directBootAware="true"
+            android:exported="false" />
+
+        <!--
+          All five actions are protected system broadcasts sent by the system uid, which is allowed
+          to reach a non-exported receiver; exported="false" keeps other apps from spoofing them.
+          directBootAware is what makes LOCKED_BOOT_COMPLETED actually deliverable.
+        -->
+        <receiver
+            android:name=".alarm.BootReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

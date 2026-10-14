@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher icon foreground layer (BUILD_SPECS §4b item 4): an alarm clock, the same motif as the
+  notification icon `ic_alarm.xml` — ring, two hands, two bells — redrawn rather than scaled.
+
+  Why redrawn, and why these numbers. `ic_alarm` is a 24dp glyph whose ring is 2 units thick; scaled
+  into a 108-unit adaptive icon that is a hairline, and its bells would land outside the area a mask
+  leaves visible. So the shape is drawn for this size instead, under two rules:
+   - **nothing can be clipped.** A mask is applied inside the central 72x72 of the 108x108 canvas, so
+     a round mask is a circle of radius 36 about (54,54). Every point of this artwork, stroke caps
+     included, is inside radius 36 of that centre: the ring's outer edge reaches 29.5 at the bottom
+     and the bell caps reach 35.2 at the corners;
+   - **legible small.** The thinnest feature is 6 units, 5.6% of the icon's width, which still reads
+     as a line when the icon is rendered at 48dp in a dense app drawer. The clock face fills about
+     70% of the visible circle, which is where a glyph has to sit to look centred under a mask.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Bells, at the clock's ten and two. Drawn first so the ring covers their inner ends. -->
+    <path
+        android:pathData="M38,42 L30,34"
+        android:strokeColor="#FFF4F6FB"
+        android:strokeWidth="8"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M70,42 L78,34"
+        android:strokeColor="#FFF4F6FB"
+        android:strokeWidth="8"
+        android:strokeLineCap="round" />
+    <!-- Clock face: a circle drawn as two half arcs and stroked. Centre (54,58), radius 22. -->
+    <path
+        android:pathData="M32,58 A22,22 0 1,1 76,58 A22,22 0 1,1 32,58 Z"
+        android:strokeColor="#FFF4F6FB"
+        android:strokeWidth="7" />
+    <!-- Hands at 12 and 4, the reading ic_alarm.xml uses. -->
+    <path
+        android:pathData="M54,58 L54,44"
+        android:strokeColor="#FFF4F6FB"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,58 L65,64"
+        android:strokeColor="#FFF4F6FB"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+</vector>

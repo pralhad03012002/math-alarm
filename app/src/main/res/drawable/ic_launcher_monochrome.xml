@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Monochrome layer for themed icons (Android 13+): the same geometry as the foreground, as a
+  silhouette. The system ignores these colours and tints the layer's alpha with the user's theme, so
+  only the shape and the stroke widths matter here. Kept as its own file rather than re-tinting the
+  foreground, because the foreground may later gain a detail that is not a silhouette and this layer
+  may not.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Bells, at the clock's ten and two. Drawn first so the ring covers their inner ends. -->
+    <path
+        android:pathData="M38,42 L30,34"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="8"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M70,42 L78,34"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="8"
+        android:strokeLineCap="round" />
+    <!-- Clock face: a circle drawn as two half arcs and stroked. Centre (54,58), radius 22. -->
+    <path
+        android:pathData="M32,58 A22,22 0 1,1 76,58 A22,22 0 1,1 32,58 Z"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="7" />
+    <!-- Hands at 12 and 4, the reading ic_alarm.xml uses. -->
+    <path
+        android:pathData="M54,58 L54,44"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,58 L65,64"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+</vector>

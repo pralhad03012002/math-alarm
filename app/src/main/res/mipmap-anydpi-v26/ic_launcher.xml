@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The launcher icon (BUILD_SPECS §4b item 4). All three layers are vector drawables: there is no
+  raster asset anywhere in this app and this added no dependency.
+  `anydpi-v26` with no density-specific fallback is sufficient and deliberate — minSdk is 26, so
+  every device this app installs on inflates an AdaptiveIconDrawable, and a vector needs no density
+  variants.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

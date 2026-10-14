@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Math Alarm</string>
+
+    <!-- Alarm ringing -->
+    <string name="alarm_default_label">Alarm</string>
+    <string name="alarm_ringing">Alarm ringing</string>
+    <!-- No longer on the ring screen: Module 2 replaced the Dismiss button with the math gate.
+         Kept for Module 3's alarm list / edit UI. -->
+    <string name="dismiss">Dismiss</string>
+    <string name="alarm_channel_name">Ringing alarm</string>
+    <string name="alarm_channel_description">Shown while an alarm is going off. Required for the alarm to ring.</string>
+
+    <!-- Module 2: the math gate -->
+    <string name="challenge_preparing">Getting your problem ready…</string>
+    <string name="challenge_answer_hint">Your answer</string>
+    <string name="challenge_submit">Submit</string>
+    <string name="challenge_backspace">Backspace</string>
+    <string name="challenge_wrong">Not right — here is a new one</string>
+    <string name="challenge_progress">%1$d / %2$d</string>
+
+    <!-- Module 2: the escape hatch. Only ever shown after 5 consecutive wrong answers. -->
+    <string name="escape_reveal">I can\'t solve this</string>
+    <string name="escape_explain">Stay on this screen for 60 seconds and the alarm will stop.</string>
+    <string name="escape_countdown">%1$d</string>
+    <string name="escape_stay">Keep this screen open. Leaving starts the minute over.</string>
+    <string name="escape_cancel">Back to the problem</string>
+
+    <!-- ====================================================== Module 3: shared -->
+    <string name="action_back">Back</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_done">Done</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_skip">Skip for now</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_not_now">Not now</string>
+
+    <!-- ================================================ Module 3: alarm list -->
+    <string name="list_title">Alarms</string>
+    <string name="list_add">New alarm</string>
+    <string name="list_empty_title">No alarms yet</string>
+    <string name="list_empty_body">Add one and it will wake you with arithmetic you have to solve before it stops.</string>
+    <string name="list_empty_action">Add your first alarm</string>
+    <string name="list_one_shot">Once</string>
+    <string name="list_everyday">Every day</string>
+    <string name="list_next">Next: %1$s</string>
+    <string name="list_not_scheduled">Not scheduled — check setup</string>
+    <string name="list_enabled_toggle">Alarm on</string>
+
+    <!-- The second route back to a ringing alarm (review M2-2.3). -->
+    <string name="list_ringing_now">An alarm is ringing</string>
+    <string name="list_ringing_open">Open it</string>
+
+    <string name="list_test_alarm">Test the alarm now</string>
+    <string name="list_test_alarm_hint">Fires the real alarm in 5 seconds, so you see it once while awake.</string>
+    <string name="list_test_alarm_label">Test alarm</string>
+    <string name="list_test_alarm_armed">Ringing in 5 seconds…</string>
+    <string name="list_test_alarm_failed">Could not schedule it — exact alarms are not permitted for this app yet.</string>
+    <string name="list_test_alarm_blocked">An alarm is ringing. Dismiss it first — this app rings one alarm at a time.</string>
+
+    <string name="list_setup_check">Check setup</string>
+    <string name="list_setup_warning">Something in your setup will stop alarms from ringing.</string>
+    <string name="list_setup_fix">Fix it</string>
+
+    <!-- ================================================ Module 3: alarm edit -->
+    <string name="edit_title_new">New alarm</string>
+    <string name="edit_title_existing">Edit alarm</string>
+    <string name="edit_time">Time</string>
+    <string name="edit_label">Label</string>
+    <string name="edit_label_hint">Optional</string>
+    <string name="edit_repeat">Repeat</string>
+    <string name="edit_repeat_none">No repeat — rings once, then turns itself off</string>
+    <string name="edit_difficulty">Difficulty</string>
+    <string name="edit_difficulty_easy">Easy</string>
+    <string name="edit_difficulty_medium">Medium</string>
+    <string name="edit_difficulty_hard">Hard</string>
+    <string name="edit_difficulty_easy_hint">Single-digit sums</string>
+    <string name="edit_difficulty_medium_hint">Two-digit sums with a carry, and times tables</string>
+    <string name="edit_difficulty_hard_hint">Two-step arithmetic and division</string>
+    <string name="edit_question_count">Questions to solve</string>
+    <string name="edit_vibrate">Vibrate</string>
+    <string name="edit_vibrate_hint">Alongside the alarm sound.</string>
+    <string name="edit_delete_confirm">Delete this alarm?</string>
+    <string name="edit_delete_confirm_body">It will stop ringing immediately and the alarm will be removed.</string>
+    <string name="edit_hour">Hour</string>
+    <string name="edit_minute">Minute</string>
+    <string name="edit_increase">Increase</string>
+    <string name="edit_decrease">Decrease</string>
+    <string name="edit_no_exact_alarm">Alarms &amp; reminders is off for this app, so this alarm cannot be registered. Open setup to fix it.</string>
+
+    <!-- =============================================== Module 3: onboarding -->
+    <string name="onboarding_title">Before your first alarm</string>
+    <string name="onboarding_intro">Four settings decide whether this app can actually wake you. Each one is explained before Android asks you anything.</string>
+    <string name="onboarding_step">Step %1$d of %2$d</string>
+    <string name="onboarding_granted">Already set</string>
+    <string name="onboarding_finish">Finish setup</string>
+
+    <string name="onboarding_notifications_title">Let the alarm show itself</string>
+    <string name="onboarding_notifications_why">The alarm runs as a notification-backed service. Without the notification permission it will still ring at full volume, but the screen with the maths problem may not appear on its own — you would have to open the app to stop it.\n\nNext you will see Android’s own permission dialog.</string>
+    <string name="onboarding_notifications_action">Allow notifications</string>
+
+    <string name="onboarding_exact_title">Let the alarm fire on time</string>
+    <string name="onboarding_exact_why">An alarm clock needs to fire at an exact minute, not “sometime soon”. If “Alarms &amp; reminders” is off for this app, nothing can be scheduled at all and no alarm will ever ring.\n\nThe button below opens that setting.</string>
+    <string name="onboarding_exact_action">Allow exact alarms</string>
+
+    <string name="onboarding_fsi_title">Let the alarm take over the screen</string>
+    <string name="onboarding_fsi_why">This is what puts the keypad in front of you over the lock screen at 6am instead of a notification you have to find. Android 14 restricted it to alarm and calling apps; an alarm clock is the allowed case.\n\nWithout it the alarm still rings — you would just have to open it from the shade.</string>
+    <string name="onboarding_fsi_action">Allow full-screen alarms</string>
+
+    <string name="onboarding_battery_title">Stop the system killing the alarm</string>
+    <string name="onboarding_battery_why">This is the one that matters most. Android’s battery optimiser, and your phone manufacturer’s own one on top of it, can freeze this app overnight so the alarm never fires — silently, with nothing to see in the morning.</string>
+    <string name="onboarding_battery_action">Set up battery access</string>
+
+    <!-- ========================================== Module 3: battery settings -->
+    <string name="battery_title">Keep the alarm alive</string>
+    <string name="battery_state_ok">This app is exempt from battery optimisation.</string>
+    <string name="battery_state_bad">This app is still being battery-optimised. An alarm may not fire.</string>
+    <string name="battery_stock_action">Ask Android to stop optimising this app</string>
+    <string name="battery_stock_why">Android’s own optimiser can delay or block an app that has been idle for hours. An alarm clock is one of the few cases where turning it off is the right answer.</string>
+    <string name="battery_oem_action">Open your phone’s own battery settings</string>
+    <string name="battery_oem_unavailable">This phone does not expose that screen, so follow the steps below by hand in Settings.</string>
+    <string name="battery_steps_title">What to look for</string>
+    <string name="battery_device">Detected: %1$s</string>
+
+    <string name="battery_steps_xiaomi">Security app → Permissions → Autostart → turn Math Alarm on.\nSettings → Apps → Math Alarm → Battery saver → No restrictions.\nIn Recents, pull the app card down and tap the lock so it is not cleared.</string>
+    <string name="battery_steps_oppo">Settings → Battery → App battery management → Math Alarm → Allow background running.\nPhone Manager → Privacy permissions → Startup manager → turn Math Alarm on.\nLock the app card in Recents.</string>
+    <string name="battery_steps_vivo">Settings → Battery → Background power consumption management → Math Alarm → Allow.\niManager → App manager → Autostart → turn Math Alarm on.\nSettings → More settings → Applications → Autostart.</string>
+    <string name="battery_steps_huawei">Settings → Battery → App launch → Math Alarm → Manage manually, and switch all three options on.\nPhone Manager → Protected apps → add Math Alarm.</string>
+    <string name="battery_steps_samsung">Settings → Battery → Background usage limits → make sure Math Alarm is not in “Sleeping” or “Deep sleeping” apps.\nSettings → Apps → Math Alarm → Battery → Unrestricted.\nTurn off “Put unused apps to sleep”.</string>
+    <string name="battery_steps_stock">Settings → Apps → Math Alarm → Battery → Unrestricted.\nIf your phone has any “autostart”, “background running” or “protected apps” list, add Math Alarm to it.</string>
+
+    <!-- ============================================== Module 3: diagnostics -->
+    <string name="diag_title">Setup check</string>
+    <string name="diag_intro">Everything below is read from the system each time this screen opens. Red means an alarm can fail.</string>
+    <string name="diag_all_ok">Nothing is in the way. Alarms should ring.</string>
+    <string name="diag_has_fail">At least one setting will stop an alarm from ringing.</string>
+    <string name="diag_has_warn">Alarms will ring, but something is degraded.</string>
+    <string name="diag_refresh">Re-check</string>
+
+    <string name="diag_exact_alarm">Exact alarms permitted</string>
+    <string name="diag_exact_alarm_bad">Nothing can be scheduled. No alarm will ring until this is on.</string>
+    <string name="diag_battery">Not battery-optimised</string>
+    <string name="diag_battery_bad">The system can freeze this app overnight and the alarm will never fire.</string>
+    <string name="diag_notifications">Notifications allowed</string>
+    <string name="diag_notifications_bad">The alarm will still ring, but the maths screen may not appear by itself.</string>
+    <string name="diag_fsi">Full-screen alarms allowed</string>
+    <string name="diag_fsi_bad">The alarm will ring, but you may have to open it from the notification shade.</string>
+    <string name="diag_volume">Alarm volume is up</string>
+    <string name="diag_volume_bad">The alarm stream is silent. The app raises it when ringing, but a Do Not Disturb rule can block that.</string>
+    <string name="diag_alarms">At least one alarm is on</string>
+    <string name="diag_alarms_bad">No alarm is switched on, so nothing is scheduled.</string>
+    <string name="diag_last_fired">Last fired</string>
+    <string name="diag_last_fired_never">No alarm has fired yet. Use “Test the alarm now” to prove the whole chain works.</string>
+
+    <!-- Review M2-2.3 / backlog 1.11: the diagnostics surface is the load-bearing part of a
+         denied full-screen-intent or notification permission, because a Log.e is invisible. -->
+    <string name="diag_ringing_now">An alarm is ringing right now. If you cannot find its screen, open it from here.</string>
+    <string name="diag_ringing_open">Open the ringing alarm</string>
+</resources>

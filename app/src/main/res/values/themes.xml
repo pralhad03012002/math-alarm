@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MathAlarm" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Alarm screen: fullscreen, no bar decoration, shown over the keyguard. -->
+    <style name="Theme.MathAlarm.Alarm" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>
