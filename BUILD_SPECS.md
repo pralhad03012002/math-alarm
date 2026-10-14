@@ -4,7 +4,7 @@ Execution plan for building the app in **3 modules**, strictly in order.
 Design rationale lives in [BRAINSTORM.md](BRAINSTORM.md); this file is the
 *build contract* and the *review ledger*.
 
-**Status:** **All three modules complete** — each reviewed and advanced with 0 open blockers and 0 open majors (Module 1 round 3, Module 2 round 2, Module 3 round 1). The build contract in this file is satisfied. Remaining work is backlog (see the consolidated list in §4's ledger) plus the one thing no review round can supply: a run on a real device — nothing in this app has ever been observed to ring. **§4c (recovery-exhausted takeover) is also complete** — reviewed and advanced 2026-10-14 at review round 2, 0 open blockers and 0 open majors, with §4c's eighth criterion (a taken-over one-shot ends up disabled) **argued and not observed**: it is the first acceptance box in this project that no unit test can close, and the emulator steps that do close it are in the §4c ledger, Round 2
+**Status:** **v1 code-complete and scope-closed (2026-10-14, project owner's decision).** Three modules plus rounds 4b/4c/4d, ten review rounds, 144 unit tests, clean build. Round 4d closes with **MAJOR 4d-1.1 accepted as a known limitation, not fixed** — the failed-start settle is dispatched rather than joined, so it can be lost if the process is frozen before it commits; the false platform justification has been corrected in the code. All other rounds advanced with 0 open blockers/majors. **Nothing has ever been observed to ring on a device** — the emulator plan in §4c/§4d's ledgers is the next step, and no further code rounds are planned.
 **Last updated:** 2026-10-09
 
 ---
@@ -2570,6 +2570,242 @@ that no amount of code review can close.** It is argued, not observed. Step 4 of
 is now step 4 plus the eight steps in Task 4 above, and if A reads *armed* after a clean takeover,
 4c-2.1 is the finding that was underrated — not 4c-1.1 re-opened.
 
+## 4d. Round: settle the row on the failed-start path (4c-2.2)
+
+**One defect, one fix.** User decision 2026-10-14: take this before the emulator run. Found
+incidentally by 4c review round 2; it **predates §4c entirely**.
+
+### The defect
+`AlarmService.handleStart`'s cancelling `catch` does `stopAlarm(); stopSelf(startId); return`. The
+settling calls — `rescheduleIfRepeating`, `recordFired` — sit **below that return**, so a start that
+throws settles the incoming row not at all. The `AlarmManager` registration was already consumed by
+the delivery either way.
+
+Repeating daily 06:00 alarm, `startForeground` refused on Tuesday:
+
+| Time | Event | Next registration | List shows | Rings? |
+|---|---|---|---|---|
+| Tue 06:00:00.0 | Fires; broadcast consumed; receiver takes the wake lock; service starts | — | **On, daily** | — |
+| Tue 06:00:00.1 | `startForeground` throws | — | On, daily | — |
+| Tue 06:00:00.1 | `catch` → `stopAlarm()` → `stopSelf` → **`return`** | — | On, daily | **no** |
+| Tue 06:00:00.1 | `rescheduleIfRepeating` is below the return — never runs | **none** | On, daily | no |
+| Wed / Thu / Fri … | Nothing is scheduled | none | On, daily | **no** |
+| Eventually | App open (`reconcileAll`) or reboot (`BootReceiver`) re-books it | booked | On, daily | works again |
+
+**The alarm is permanently dead while the UI insists it is armed**, and the only self-heals are
+opening the app or rebooting — neither of which a user does *because* of a fault they cannot see.
+One-shot variant: the row stays `enabled` with no registration, so `rescheduleAll` later re-books it
+and it rings on a morning the user never set.
+
+### The fix
+`settleRefusedAlarm(alarmId, triggerAtMillis)` inside the catch. It already does exactly the right
+thing for both row types: `rescheduleIfRepeating` books the repeating alarm's next occurrence, and
+`disableIfOneShot` disables the one-shot. They are disjoint on `isRepeating`, so order is irrelevant.
+
+### Constraints
+- **Known weakness, must be addressed explicitly, not silently inherited.** This write lands on a
+  path that is *about to* `stopAlarm()` (releasing the wake lock) and `stopSelf()` (making the
+  process cached) — which is finding **1.9**'s hazard and the reason the dismiss path *joins* its
+  write. Either join it, or state plainly in the report why not. Do not just dispatch and hope.
+- Do not move the settle *above* the try: `ringingAlarmId` must not be disturbed, and §4c's
+  `settleTakenOverAlarm` call at `:114` already occupies that position for a different row.
+- Must not double-book: the success path still calls `rescheduleIfRepeating(alarmId, …)` below the
+  try, so the catch path and the success path must be mutually exclusive (the catch `return`s).
+- Must not disturb §4c's takeover settle, Module 1's ten-path wake-lock accounting, backlog 2.2's
+  teardown guard, or the `TEST_ALARM_ID` skip.
+
+### Acceptance criteria
+- [ ] `./gradlew assembleDebug` exits 0
+- [ ] `./gradlew testDebugUnitTest` passes; all **144** existing tests still pass, none weakened
+- [ ] A failed start for a **repeating** alarm still books its next occurrence
+- [ ] A failed start for a **one-shot** leaves the row disabled, not armed-without-registration
+- [ ] The success path is unchanged — no double reschedule, no double `recordFired`
+- [ ] The write's durability on the teardown path is either guaranteed or explicitly documented
+- [ ] No schema change, no new dependency, no `INTERNET`, no snooze; `ui/` zero audio code refs
+
+### Review Ledger — Round 4d
+*Review agents append here. Do not edit by hand.*
+
+### Round 1 — 2026-10-14
+
+**0 blockers, 1 major, 2 minors, 1 nit. DO NOT ADVANCE.** The code change is right and is as small as
+it could be — exactly one executable line, `settleRefusedAlarm(alarmId, triggerAtMillis)` at
+`AlarmService.kt:151`, in the catch, before `stopAlarm()`, with the catch still ending in `return`.
+4c-2.2's defect is genuinely closed on every branch I could reach: a repeating alarm whose start
+throws now books its next occurrence, a one-shot ends up disabled rather than armed-without-a-
+registration, the success path is byte-identical, and no row can be settled twice. Six of the seven
+boxes pass. **The gating finding is the recorded reasoning, not the line.** §4d's constraint 1 and
+criterion 6 exist precisely to force an honest decision about finding 1.9's durability hazard on this
+path, and the decision was taken on a platform premise that the AOSP source contradicts in three
+separate places — so the one join that review 4c-2.1 itself named as the "cheapest honest close" is
+now recorded in this file as impossible, on a mechanism that does not exist. That is the same shape as
+4c-1.1 and as §4c constraint 3: a comment asserting a false premise, with the code shaped around it.
+
+| # | Severity | Location | Finding | Why it matters |
+|---|---|---|---|---|
+| **4d-1.1** | **MAJOR** | `alarm/AlarmService.kt:229-237` (the Durability KDoc), with `:151-153` and the §6 row | **The platform claim the "dispatch, not join" decision rests on is false in all three of its load-bearing parts.** Checked against AOSP `ActiveServices.java` + `ActivityManagerConstants.java` on `android14-release`, `android15-release`, `android16-release` and `main` — the relevant ordering and constants are identical on all four. (a) *"the likeliest reason this catch runs is `startForeground` failing, so delaying `stopSelf` would leave an unmet `startForegroundService` obligation outstanding"* — a `startForeground` that fails **inside the system has already discharged the obligation**. `setServiceForegroundInnerLocked` runs `r.fgRequired = false; r.fgWaiting = false; mServiceFGAnrTimer.cancel(r);` (`ActiveServices.java:2248-2251`, android16-release) **before every throw site a restriction / permission / type failure can reach**: the BOOT_COMPLETED `ForegroundServiceStartNotAllowedException` (`:2255`), the BG-FGS-start restriction (`:2571`), the API-34 FGS-type policy exceptions (`throw fgsTypeResult.second`, `:2612`), the app-op `SecurityException`, `StartForegroundCalledOnStoppedServiceException` and the FGS time-limit exception. AOSP's own comment at `:2618` says it outright — *"now that we've enforced the startForegroundService() contract"*. No timer is armed, so there is nothing to time out and nothing to be killed by. (b) *"the immediate `stopSelf(startId)` is what discharges it"* (ledger wording) — it does the opposite. Where the obligation genuinely **is** unmet (`ensureChannel()` / `buildNotification()` threw, so `startForeground` was never reached), `bringDownServiceLocked` sees `r.fgRequired` still true and posts `SERVICE_FOREGROUND_CRASH_MSG` (`:6361-6386`) → `serviceForegroundCrash` (`:7653-7661`) → `crashApplicationWithTypeWithExtras(…ForegroundServiceDidNotStartInTimeException…)`. The immediate `stopSelf` **is** what detonates the crash. (c) *"delaying `stopSelf` by up to 10 s parks on the platform's own FGS-start deadline"* — the deadline is **30 s**, not 10: `DEFAULT_SERVICE_START_FOREGROUND_TIMEOUT_MS = 30 * 1000`, plus a further `DEFAULT_SERVICE_START_FOREGROUND_ANR_DELAY_MS = 10 * 1000` before the ANR is raised, identical on API 34/35/36 and main. `DISMISS_WRITE_TIMEOUT_MS` is 10 s, so even in the unmet case a `handleDismiss`-shaped join has ~20 s of headroom. | **Concrete scenario.** Daily 06:00 repeating alarm. The API-34 FGS-type check denies `mediaPlayback`, or the BG-FGS-start restriction denies the start on an OEM build where the alarm-clock temp-allowlist does not apply; `ServiceCompat.startForeground` throws. `fgRequired` is already false and the FGS timer already cancelled, so the join 4c-2.1 recommended is **fully available**. The code instead dispatches and immediately runs `stopAlarm()` → `AlarmWakeLock.release()` → `stopSelf(startId)`. 06:00, screen off, no wake lock held anywhere in the process, no foreground component, process cached: autosuspend freezes the `Dispatchers.IO` thread with `AlarmScheduler.schedule` not yet done. That is finding **1.9** verbatim, and §4d's own timeline table resumes from "Wed / Thu / Fri … nothing is scheduled". The write that exists to close 4c-2.2 is lost in the exact case the comment claims it cannot be protected. The second harm is to the record: 4c-2.1 named this join as the cheapest honest close, and this round closes it as impossible on a mechanism that does not exist, so nobody will revisit it. **Smallest fix:** the shape already in this file — dispatch the settle, and move `stopAlarm(); stopSelf(startId)` into a `mainHandler.post { }` from the settle's `finally` under a `withTimeoutOrNull` ceiling of ≤10 s, exactly as `handleDismiss:318-334` does. Any ceiling under ~25 s is safe even in the unmet-obligation sub-case, where the process is crash-killed by `stopSelf` whenever it happens, so deferring cannot make that worse in kind. **If the dispatch is kept instead**, the KDoc and the §6 row must be rewritten to the true reasons — there is no *foreground* state to hold once `startForeground` has failed, and the unmet-obligation sub-case is crash-killed on `stopSelf` regardless — including the honest admission that the **wake lock is holdable** and would protect the write, so this is a complexity trade, not a platform constraint |
+| **4d-1.2** | MINOR | `alarm/AlarmService.kt:152-153` (**pre-existing**, surfaced by 4d-1.1's research) | On the sub-case where the FGS obligation really is unmet — `ensureChannel()` or `buildNotification()` threw before `startForeground` was reached — the catch's `stopSelf(startId)` makes the *system* crash the process: `bringDownServiceLocked` with `r.fgRequired` still true → `SERVICE_FOREGROUND_CRASH_MSG` → `ForegroundServiceDidNotStartInTimeException` (`ActiveServices.java:6361-6386`, `:7653-7661`). Scenario: a background app update swaps the APK and `getString(R.string.alarm_channel_name)` inside `ensureChannel()` throws `Resources.NotFoundException` at 06:00 — a real-world cause of this catch. | The alarm does not ring *and* the user gets an "app keeps stopping" crash, with no logcat trail that points at the real cause. Not introduced by this round (the `stopSelf` predates Module 1's last review) and outside 4d's one-item scope, so logged rather than gating. It also means the newly dispatched write has effectively no chance of committing on this sub-case: the crash reaches the main thread within milliseconds of the `launch`. The honest closes are a minimal fallback `startForeground` before giving up, or accepting the crash and saying so in the KDoc instead of claiming `stopSelf` discharges the obligation |
+| **4d-1.3** | MINOR | `alarm/AlarmService.kt:243-251` (**pre-existing**; Task 3's ruling) | **Ruled genuinely pre-existing and benign; routing the catch through it does not make it newly matter.** The two halves each `getById` independently on `Dispatchers.IO`, so a row edited one-shot↔repeating between the reads can be acted on by both. Worst reachable interleaving: half 1 reads `isRepeating && enabled` and books the next occurrence, the user flips the row to one-shot, half 2 reads `!isRepeating` and runs `dao.disable` + `AlarmScheduler.cancel` — leaving a **disabled row with a live registration**, i.e. one spurious ring, after which `rescheduleIfRepeating` finds `enabled == false` and it goes quiet for good. The mirror interleaving resolves to "off", which is honest. | Requires the user to be editing that alarm's repeat days inside the millisecond window between two IO reads, at the moment that alarm's start threw at 06:00 — not reachable in practice, and identical in character on the four-rounds-old `refuseStart` path. The new call site adds a second, rarer trigger and no new state. **Cheapest close is one read, not ordering or a transaction:** `settleRefusedAlarm` could do a single `getById` and branch on `isRepeating`, which removes the race *and* a DB round-trip. Explicitly **not** recommended inside 4d — it touches the refusal path, and 4d is a one-item round |
+| **4d-1.4** | NIT | `alarm/AlarmService.kt:151` (with `:498-505`) | The new call is the last thing in the catch that can throw, and it *can*: `rescheduleBaseline` (`:498`) runs synchronously before the `launch`, and `Instant.ofEpochMilli(triggerAtMillis).atZone(…).plusMinutes(1)` throws `DateTimeException` / `ArithmeticException` for an out-of-range `EXTRA_TRIGGER_AT`. A throw there escapes `handleStart` → `onStartCommand`, and under `START_REDELIVER_INTENT` the same intent returns: backlog **2.7**'s redelivery-crash-loop shape. | Not reachable with our own extras — `AlarmScheduler.firePendingIntent:113` bakes in a real epoch-millis instant, the service is not exported, and the success path at `:159` makes the identical call — so there is no new class of risk and no live bug. Recorded only because finding **1.14**'s rule now has a one-line gap *inside* the alarm-cancelling structure itself: `runCatching { settleRefusedAlarm(…) }.onFailure { Log.e(…) }` closes it in one line, which is exactly what the `recordFired` call site at `:162-163` already does |
+
+#### Over-engineering (ponytail-review)
+
+- `AlarmService.kt:146-150`: `shrink:` the 5-line call-site comment restates §4d's defect narrative,
+  which already exists in the §4d spec body, the §6 row, the dev's ledger entry and — from the other
+  direction — the method's own KDoc two screens down. Two lines carry everything load-bearing: "the
+  registration is spent whether or not it rang, so the row still has to be settled (review 4c-2.2)"
+  plus the ordering note, "before `stopAlarm()`, so the write starts while the wake lock is held".
+  **−3 lines.** Non-gating.
+- `AlarmService.kt:229-237`: the 9-line durability paragraph is **requested prose** — §4d constraint 1
+  demands the decision be stated, and 4c's MAJOR came from a comment asserting a false premise, so an
+  accurate recorded decision has demonstrated value in this file. **Keep it, do not trim it.** The
+  objection is not its length: it is 4d-1.1, that the content is wrong. A comment that is wrong is
+  worth less than no comment, and the rewrite 4d-1.1 asks for will not be shorter.
+- `AlarmService.kt:226-227`: the 2-line "Called from [refuseStart] and from [handleStart]'s cancelling
+  `catch`" paragraph is the anti-regression note that keeps the next editor from splitting the helper
+  per call site. **Keep.**
+- **Checked and absent, as the dev claimed it declined them:** no `Job`-returning settle, no
+  `settleFailedStartAlarm` duplicate of `settleRefusedAlarm`, no `postDelayed` half-join (the only
+  `postDelayed` in the file is the pre-existing M2-2.1 idle stop at `:392`, untouched), and no new
+  class, field, flag, constant, dependency or test double. The diff adds **exactly one executable
+  line**; the other 18 are comment and KDoc.
+
+`net: -3 lines possible.` One executable line to stop a repeating alarm dying permanently is about as
+lean as a fix gets; the only honest cut is the duplicated narrative at the call site.
+
+#### Verified correct
+
+- **Exactly one executable line, in the right place.** `:151`, inside the catch, above `stopAlarm()`
+  so the dispatch happens while the wake lock is still held; the catch still ends in `return`. The six
+  `AlarmWakeLock` call sites and Module 1's ten-path accounting are untouched, backlog 2.2's teardown
+  guard at `finishDismiss:438-450` is untouched, and `AlarmRescheduler`'s `TEST_ALARM_ID` skip is
+  unreachable from the new code.
+- **The catch and §4c's takeover settle can never act on the same row — proved, not argued.**
+  `settleTakenOverAlarm(if (alarmId != ringingAlarmId) ringingAlarmId else NO_ALARM)` at `:114` passes
+  a non-sentinel id only when `alarmId != ringingAlarmId`, and then passes `ringingAlarmId`; the catch
+  always acts on `alarmId`. The two arguments are unequal by construction in that branch, and in the
+  complementary branch the takeover settle is handed `NO_ALARM` and returns at its first line. Walked
+  on all five reachable `AlarmStartPolicy` outcomes (`DUPLICATE`, both `incoming == ringing` branches,
+  the §4c clause, the final `else`); on the `else` fresh-start branch `ringingAlarmId` is `NO_ALARM`,
+  so the ternary's true arm is also a no-op.
+- **No double-settle with the success path, and no double `recordFired`.** `rescheduleIfRepeating` and
+  `recordFired` sit at `:157-163`, below the `try`; the catch `return`s above them. Criterion 5 holds
+  byte-for-byte — the diff's only non-comment change is inside the catch.
+- **The `DUPLICATE` early return reaches neither the catch nor the post-try settle** — it is a plain
+  `return` inside the `try`, and a `return` does not transfer to a `catch`. And where the catch *is*
+  reached on a duplicate delivery (a throw from `AlarmWakeLock.acquire`, which sits above the duplicate
+  check), the settle is **idempotent, not a double-book**: the redelivered intent carries the *same*
+  `EXTRA_TRIGGER_AT`, so `rescheduleBaseline` yields the same baseline, `NextTrigger` the same
+  occurrence, and `requestCode(alarmId)` + `FLAG_UPDATE_CURRENT` replaces the identical registration
+  in place. The one-shot half disables a row that the eventual dismiss would have disabled anyway.
+- **The repeating alarm's next occurrence is genuinely booked on the failure path.** Walked
+  `:151` → `rescheduleIfRepeating:484` → `rescheduleBaseline:498` → `getById` → `isRepeating && enabled`
+  → `AlarmScheduler.schedule`. The row **is** still `enabled`: nothing on this path disables it
+  (`disableIfOneShot` early-returns for a repeating row), and the §4c settle acts on a different id.
+  `EXTRA_TRIGGER_AT` **is** present on this delivery — baked in at `AlarmScheduler.kt:113`, forwarded
+  by `AlarmReceiver.kt:29,38`, read at `AlarmService.kt:94`. The baseline is computed **synchronously
+  on the main thread** before the `launch`, so it cannot drift with coroutine scheduling. And it cannot
+  land before the consumed occurrence: `trigger + 1 min` is strictly after it (alarms are
+  minute-granular), `NextTrigger` returns the first candidate strictly after the baseline, consecutive
+  occurrences of one hour/minute are ≥23 h apart, and the `triggerAtMillis <= 0` arm falls back to
+  `now` — which is still past the occurrence that just fired. Finding 1.15 stays closed on this path.
+- **`START_REDELIVER_INTENT` replay is idempotent.** If the process dies before `stopSelf(startId)`,
+  the same intent re-enters `handleStart` with the same `EXTRA_TRIGGER_AT`; the reschedule recomputes
+  from wall clock to the same instant and `FLAG_UPDATE_CURRENT` + the per-alarm `requestCode` and data
+  URI replace the registration rather than adding one. A second `disableIfOneShot` re-writes
+  `enabled = 0` and finds no `PendingIntent` to cancel.
+- **`TEST_ALARM_ID` (-2) and the id-less case are no-ops in the right direction.** The `-2` row is
+  stored `enabled = false, repeatDaysMask = 0`, so `rescheduleIfRepeating` books nothing and
+  `disableIfOneShot` re-writes the same `enabled = 0` and cancels an already-consumed registration.
+  An `ACTION_START` with no id gives `alarmId == NO_ALARM` and `settleRefusedAlarm` returns at its
+  first line — correct, because there is no row to settle.
+- **No partial settle on a stable row.** The halves are disjoint on `isRepeating`, so the four
+  commit/not-commit combinations collapse to exactly two end states: fully settled, or the pre-fix row.
+  The only partial state inside `disableIfOneShot` is `dao.disable` committing without
+  `AlarmScheduler.cancel`, and the cancel is already belt-and-braces here — the registration this
+  delivery consumed is gone, so `FLAG_NO_CREATE` finds nothing. The dispatch therefore introduces no
+  state the old code could not reach, which is the half of the dev's argument that **does** hold.
+- **Criterion 7, re-verified from the tree:** `version = 1` with only `app/schemas/.../1.json`, no
+  `INTERNET` in the manifest, `junit:junit:4.13.2` still the only test dependency, no manifest change
+  at all, no `snooze` outside a comment saying there deliberately is none, and `ui/`'s audio hits are
+  prose in KDoc only.
+- **144 tests, none weakened.** Re-counted 144 `@Test` across 9 files (34/27/18/17/12/10/10/10/6), no
+  `@Ignore`. The dev's claim that the only pure logic involved is already pinned checks out:
+  `AlarmDayMaskTest.kt:93,101` asserts `isRepeating` in both directions, which is the disjointness the
+  two halves rely on.
+
+#### §4d acceptance criteria audit (all seven)
+
+| # | Criterion | Verdict |
+|---|---|---|
+| 1 | `./gradlew assembleDebug` exits 0 | **Met** — independently verified before this review |
+| 2 | `testDebugUnitTest` passes; all 144 pass, none weakened | **Met** — 144 re-counted from the sources, no `@Ignore`, no test deleted or relaxed, and no new test (correctly: the catch is reachable only through `AlarmService` and its effects end in Room and `AlarmManager`, with `junit` the only test dependency) |
+| 3 | A failed start for a **repeating** alarm still books its next occurrence | **Met in the code** — traced end to end (see *Verified correct*): row still `enabled`, `EXTRA_TRIGGER_AT` present, baseline computed on the main thread, no re-book of the consumed occurrence. The residual is durability, not logic: see 4d-1.1 |
+| 4 | A failed start for a **one-shot** leaves the row disabled, not armed-without-registration | **Met in the code** — same `disableIfOneShot` chain as the dismiss, the refusal and §4c's takeover, so the four cannot drift. Same durability residual |
+| 5 | The success path is unchanged — no double reschedule, no double `recordFired` | **Met** — the diff's only executable change is inside the catch, and the catch `return`s above `:157-163` |
+| 6 | The write's durability on the teardown path is either guaranteed or explicitly documented | **NOT MET — 4d-1.1.** It is documented, at length and deliberately, but the documentation is false in three independent places, and the "guaranteed" branch **is** achievable here: the FGS obligation is already discharged in the case the comment names as most likely, the deadline is 30 s rather than 10, and `handleDismiss`'s join shape is sitting in the same file. This is the box §4d's constraint 1 was written to protect, and it is the one the round did not clear |
+| 7 | No schema change, no new dependency, no `INTERNET`, no snooze; `ui/` zero audio code refs | **Met** — re-verified from the tree |
+
+#### Final readiness delta
+
+Both §4c and §4d landed in the firing chain's *failure* paths, so what changed for the first device run
+is mostly what to watch when something goes wrong rather than when it goes right.
+
+- **The happy path is unchanged by both rounds.** Nothing in §4c or §4d touches a start that succeeds,
+  so the original device-run plan — arm, let it ring, solve, dismiss, re-check the list and the
+  next-alarm indicator — stands exactly as written. Neither round moved the alarm-clock broadcast's
+  foreground deadline: §4c added one `applicationContext` read and a `launch` before `startForeground`,
+  and §4d added nothing at all inside the `try`.
+- **Two of the three failure paths out of `handleStart` now settle their row**, and the one that still
+  does not is the id-less start (nothing identifies a row to settle). So after this run the list and
+  the next-alarm indicator should be *honest* after any refused, taken-over or failed start — that is
+  now the thing worth checking, and it is checkable only on a device.
+- **Newly worth observing on the emulator**, beyond §4c's eight steps:
+  1. **Force the catch.** Revoke `POST_NOTIFICATIONS`, or run `adb shell cmd appops set <pkg> START_FOREGROUND ignore`, or temporarily point `foregroundServiceType` at a type the app has no permission for, then fire the test alarm. Expect `E/AlarmService: failed to start alarm …`, then — within a second or two — a *new* `I/AlarmScheduler: alarm <id> scheduled for …` for a repeating row, or `enabled = 0` for a one-shot. If the reschedule log never appears, 4d-1.1's lost-write window is **observed** rather than argued, and the MAJOR is confirmed on evidence rather than on source reading.
+  2. **Run 1 with the screen off and the device in Doze** (`adb shell dumpsys deviceidle force-idle`) rather than awake. That is the configuration in which the dispatched write races autosuspend; an awake emulator will almost always let it commit and will therefore *not* reproduce 4d-1.1.
+  3. **Check logcat for `ForegroundServiceDidNotStartInTimeException` / "did not then call Service.startForeground"** on any failed start. Its presence identifies 4d-1.2's sub-case (the throw happened before `startForeground` was reached) and distinguishes it from the restriction sub-case, which produces no such crash. Worth knowing which one the emulator actually hits, because the two have different fixes.
+  4. **`adb shell dumpsys alarm | grep mathalarm` after a failed repeating start**, then again after a reboot. The first tells you whether §4d's write landed; the second tells you whether `BootReceiver`'s reconcile healed it anyway, which is the self-heal both 4c-2.2 and this round lean on.
+- **Nothing in §4d needs a new emulator step for the *success* path**, and criterion 6 is the only box
+  in this round that a device can settle. Criterion 8 of §4c remains the only box in the project that
+  no unit test can close; §4d adds criteria 3, 4 and 6 to that list — three of its seven boxes are
+  argued from the source, and step 1 above is what turns them into observations.
+
+**DO NOT ADVANCE.** 0 blockers, 1 open **MAJOR** (4d-1.1), 2 minors, 1 nit. The §1 bar is zero open
+blockers and zero open majors. The one-line code change should **stay as it is** — it closes 4c-2.2
+and it is the right line in the right place; round 2 is a one-item round on the durability decision:
+either adopt `handleDismiss`'s deferred-teardown shape in the catch, or keep the dispatch and rewrite
+the KDoc (`:229-237`), the dev ledger row and the §6 row to the reasons that are actually true.
+
+## 4e. Scope closed
+
+**Project owner's decision, 2026-10-14: stop here and work with what exists.** No further review
+rounds. This section records what is deliberately left open so nothing reads as finished that is not.
+
+### Accepted, not fixed
+- **4d-1.1 (MAJOR)** — the failed-start settle is dispatched, not joined, so it can be lost if the
+  process is frozen before it commits. One transient `startForeground` failure can therefore cost a
+  repeating alarm more than one morning, until reconcile-on-open or a boot heals it. The code is
+  correct and strictly better than the status quo; what was wrong was the *justification*, and that
+  has been corrected in `AlarmService.settleRefusedAlarm`'s KDoc against real AOSP. The join shape,
+  and the emulator step that would turn this from argument into observation, are both recorded in
+  the Round 4d ledger. **§4d acceptance criterion 6 is the one unmet box in the project.**
+- **The watchdog alarm** — deferred pending a device run (§4b). Still BRAINSTORM §6's only absent
+  mitigation, and still the thing to build first if any firing is late or missed.
+- **The consolidated backlog** across all rounds — minors and nits, none of which change whether the
+  alarm rings. 4d-1.2 (a `stopSelf` crash-kill when the FGS obligation is genuinely unmet) and
+  4c-2.1 (the takeover settle's identical unjoined write) are the two worth looking at first.
+
+### Verified only by argument, never observed
+§4c criterion 8 and §4d criteria 3, 4 and 6. Each is correct by source-level trace and by sharing a
+call chain with paths that *are* tested, but none is reachable from a JVM unit test, and this project
+has no instrumentation tests by design (§0). The emulator steps in the Round 4c and 4d ledgers are
+what convert them.
+
+### The honest summary
+The Android platform contract is satisfied as far as code review can establish. Whether a *particular
+phone* honours that contract is untested, and the single largest risk — OEM battery killers — is one
+no amount of further review can reduce, because every mitigation this app has is advisory.
+
 ## 5. Explicitly out of scope for v1
 
 Snooze · multiple puzzle types (memory, typing, QR, shake) · difficulty
@@ -2602,6 +2838,7 @@ cloud sync · analytics
 | 2026-10-14 | — | 4c review 1 | Reviewed the recovery-exhausted takeover: **0 blockers, 1 major, 2 minors, 4 nits**. **DO NOT ADVANCE.** All seven §4c acceptance boxes are met and the policy change itself is right: the new clause sits after both `incoming == ringing` branches and before an unchanged refusal, the ordering of the two volatile writes is sound per start generation (`audioAlive` and `startPending` both go false first), the non-atomic double read in `handleStart` is safe, and reusing the exhausted `AlarmRinger` leaks nothing — the durable pre-ring volume record survives because `rememberVolumeBeforeRinging` refuses to overwrite an existing one, the `ContentObserver` early-returns when already registered, `requestAudioFocus` abandons first, and `startPlaybackFrom` opens with `releasePlayer()`. Wake lock still exactly once on all ten paths; a dismiss for the taken-over alarm cannot tear down the new ring. Touching `AlarmRinger` ruled **necessary** (the service cannot infer exhaustion without a watchdog, a cross-thread callback or mirroring `restartPasses`, all worse); the mid-challenge session reset ruled **acceptable** (B needs its own tier and must not inherit A's failures, and a lost escape countdown only makes dismissal harder). The gating **MAJOR 4c-1.1** is in `AlarmService`, not the policy: the takeover branch never settles the alarm it overwrites, and `disableIfOneShot` does **not** run at start — it has exactly two callers, `handleDismiss` and `settleRefusedAlarm`, and the takeover calls neither. A taken-over one-shot is left `enabled` with no registration, so `AlarmRescheduler` re-books it for the next morning and it rings: precisely the phantom `settleRefusedAlarm`'s own KDoc describes, backlog **1.8** re-opened for the new state. For two one-shots the §4c defect is transferred from B to A, not removed. **§4c constraint 3 and the comments at `AlarmService.kt:137` / `AlarmStartPolicy.kt:33-35` assert the false premise and need correcting with the code.** Minors: **4c-1.2** `recoveryExhausted` can be left stale-true across a `start()` interleaving between the two exhaustion writes (one-line close: clear it in the posted lambda too), **4c-1.3** the new clause lets an id-less start take over a live ringer. ponytail-review: lean in code — no new class, dependency, queue or callback — but the §4c rationale is written out three times (~10 lines cuttable); the `&& !ringerIsRinging` conjunct and the `= false` default were both considered for deletion and **kept**, the conjunct because 4c-1.2 shows it is the load-bearing guard rather than redundant with the write ordering. Round 2 is a one-item round: 4c-1.1 |
 | 2026-10-14 | — | 4c dev 2 | **One-item round: MAJOR 4c-1.1, the taken-over one-shot's row.** `handleStart` now captures `ringingAlarmId` before the takeover overwrites it and hands it to a new `settleTakenOverAlarm`, which runs **only** the `disableIfOneShot` half of `settleRefusedAlarm` — `rescheduleIfRepeating` genuinely did run at that alarm's own start, so re-running it would book a second occurrence. The call sits *before* the `try`, not after it, so the cancelling catch cannot skip it; a non-`NO_ALARM` argument identifies a takeover and nothing else, because the policy's other two `RING` branches both have `alarmId == ringingAlarmId` or no live id. Repeating alarms and the reserved test row are unaffected (`disableIfOneShot` returns early for a repeating row; the test row is already `enabled = false` and `AlarmRescheduler` skips it). Also taken, one line each: **4c-1.2** `recoveryExhausted = false` is now cleared a *second* time inside `start()`'s posted lambda, on the audio thread, strictly after any in-flight exhaustion write (the main-thread clear stays, for a delivery arriving before the lambda runs); **4c-1.3** the takeover clause gained an `incomingAlarmId != NO_ALARM` conjunct so an id-less start can never become the live id; **4c-1.4** / **4c-1.5** the two comments that overstated what they guarantee. The triplicated §4c rationale is down to one full statement at the clause plus two 3-line pointers, and the comments asserting the false `disableIfOneShot`-at-start premise are gone. `&& !ringerIsRinging` and the `= false` default both **kept**, as the review directed. +9 lines of production code, net 0 in `AlarmStartPolicy.kt`. `assembleDebug` exits 0; `testDebugUnitTest` **144/144** green (143 pre-existing, none weakened, deleted or `@Ignore`d, + 1 new case pinning 4c-1.3) — criterion 8's row settling has no JVM test: it ends in Room and `AlarmManager`, and the project has JUnit only |
 | 2026-10-14 | — | 4c review 2 | Re-reviewed the takeover round: **0 blockers, 0 majors, 3 minors, 1 nit**. **ADVANCE** — all **eight** §4c boxes pass and nothing from round 1 is open. **4c-1.1 CLOSED**: `settleTakenOverAlarm` (`AlarmService.kt:243-250`, called at `:114` with the pre-overwrite id) reaches `dao.disable` + `AlarmScheduler.cancel` through the *same* `disableIfOneShot` the dismiss and refusal paths call, so the three cannot drift; I walked the `if (alarmId != ringingAlarmId) ringingAlarmId else NO_ALARM` selector on all four reachable outcomes (`DUPLICATE`, both `incoming == ringing` branches, the §4c clause, the final `else`) and a non-`NO_ALARM` id is reachable **only** from the §4c clause — so the opposite-direction MAJOR, disabling a row that should stay armed, does not exist; repeating rows keep exactly the one occurrence booked at their own start (no double-booking) and the reserved `-2` row is a no-op in both directions. **4c-1.2 CLOSED** (the audio-thread clear at `AlarmRinger.kt:150` precedes `startPlaybackFrom`, so a fresh exhaustion can never be swallowed), **4c-1.3**, **4c-1.4**, **4c-1.5 CLOSED**. The dev's deliberate deviation — settling *before* the `try` — is **upheld**: the catch at `:143-149` `return`s, the overwritten alarm's registration is consumed whether or not the new one starts, "off" is the honest row where the alternative is backlog 1.8's phantom ring, and the call stays unreachable from the catch, which is the stronger form of finding 1.14. The missed ponytail target is **accepted**: the triplication round 1 objected to is gone (one canonical argument plus two 3-line pointers), and the clause comment's growth to 11 lines is earned because mutation testing proves all three conjuncts load-bearing and round 1's MAJOR came from a comment asserting a false premise; `net: -4` remains (one duplicated KDoc paragraph). New: **4c-2.1** MINOR the takeover's disable write is unjoined and the catch path can freeze it (finding 1.9's hazard, compound precondition); **4c-2.2** MINOR pre-existing — the catch path settles *neither* row, so a failed repeating start never re-books and never rings again until a reconcile; **4c-2.3** MINOR no test pins "only a §4c takeover reaches the settle", and a `domain/` seam exists; **4c-2.4** NIT residual cross-generation volatile interleaving, no fix recommended. **Criterion 8 cannot have a JVM unit test** — verified: `junit:junit:4.13.2` is the only test dependency, there is no `androidTest` source set, the helper is a private `Service` member and its effects end in Room and `AlarmManager` — so it is confirmed on the emulator only, by the eight steps recorded in the ledger |
+| 2026-10-14 | — | 4d dev 1 | **One-item round: 4c-2.2, the failed-start path's unsettled row.** `handleStart`'s cancelling `catch` now calls `settleRefusedAlarm(alarmId, triggerAtMillis)` before `stopAlarm()`, so a start that throws re-books a repeating alarm's next occurrence and auto-disables a one-shot instead of leaving the row armed with its registration spent. One new statement; the rest of the diff is the comment and the KDoc that records the durability decision. **The write is deliberately dispatched, not joined** (4c-2.1's hazard, stated rather than inherited silently): `handleDismiss`'s join holds the *foreground notification* plus the wake lock, and the likeliest cause of this catch is `startForeground` failing, so there may be no foreground state to hold — delaying `stopSelf` with an unmet `startForegroundService` obligation outstanding invites the platform's own FGS timeout to kill the process, losing the write anyway and adding a crash, and it would also move the wake-lock release off the synchronous main-thread path that Module 1's ten-path item 4 audits. Residual points *back to the status quo*, never to a new harm: a lost write leaves exactly today's behaviour (no reschedule / no auto-disable), still healed by reconcile-on-open or a boot, so the dispatch is strictly better than the nothing it replaces. No double-settle: the success path's `rescheduleIfRepeating` is below the try and the catch `return`s; the §4c takeover settle took the *other* id (`NO_ALARM` whenever `alarmId == ringingAlarmId`), so no row is settled twice. No new test — the catch is reachable only through `AlarmService` and its effects end in Room and `AlarmManager`, with `junit` the only test dependency; the one piece of logic involved (the `isRepeating` disjointness of the two halves) is already pinned by `AlarmDayMaskTest`. `assembleDebug` exits 0; `testDebugUnitTest` 144/144 green, none weakened |
 
 ---
 
@@ -2670,3 +2907,7 @@ cloud sync · analytics
 | 2026-10-14 | A *different* alarm takes over a ringer whose audio recovery is exhausted, instead of being refused | §4c, review MINOR **M3-3.2**. `Plan.GiveUp` deliberately leaves `ringingAlarmId` set while `isRinging` goes false, and the refusal clause tested both — so a silent, permanently-dead ring refused the next alarm and *neither* alarm made a sound, the second one auto-disabling itself on the way out. The policy now gets a third signal from the ringer rather than inferring liveness from two, and that one state hands the ringer over: a fresh ringer with a fresh retry budget is strictly better than guaranteed silence. Not a return to taking over generally — the signal is false during the start window and while anything is actually ringing, so backlog **1.7**/**1.8**, **M2-1.8** and **M3-1.2** all stay closed |
 | 2026-10-14 | §4c constraint 3 corrected, criterion 8 added | Review 4c-1.1. My constraint asserted `disableIfOneShot` runs at alarm start; it does not — only `settleRefusedAlarm` and `handleDismiss` call it. The coding agent implemented the spec faithfully, so the takeover transferred backlog 1.8's phantom-alarm harm from the refused alarm to the overwritten one. Criterion 8 is the box whose absence let all seven pass on a round that did not advance |
 | 2026-10-14 | A takeover settles the overwritten alarm's row | Review **MAJOR 4c-1.1**. `disableIfOneShot` is called at *dismiss*, never at start, so the round-1 takeover left alarm A `enabled` with its registration consumed — `AlarmRescheduler.rescheduleAll` re-books every enabled row and `NextTrigger` rolls a past one-shot to tomorrow, so opening the app or any boot re-armed A and it rang on a morning nobody set. Backlog **1.8**, re-opened for the one state §4c created and now closed for it: the takeover branch runs the auto-disable half against the id it overwrites. Only that half — the reschedule already happened at A's own start, so re-running it would double-book a repeating alarm. A taken-over one-shot now ends disabled, exactly as a dismissed or refused one does (criterion 8) |
+| 2026-10-14 | §4d added: settle the row on the failed-start path | User decision. 4c-2.2, found incidentally during 4c review 2 and predating §4c: a repeating alarm whose start throws is never rebooked and dies permanently while the list shows it armed. Declined in the same pass: the `gradle.properties` portability fix and the −4-line comment trim |
+| 2026-10-14 | A failed start settles the incoming alarm's row | Review **4c-2.2**. The cancelling `catch` returned above every settling call, so a repeating alarm whose start threw never booked its next occurrence and silently stopped existing while the list showed it armed, and a one-shot stayed `enabled` with no registration for `rescheduleAll` to re-book as a phantom. `settleRefusedAlarm` already had the right semantics for both — the registration is spent either way — so the catch now calls it. Kept unjoined on purpose (4c-2.1): the dismiss path's join is unavailable where `startForeground` itself may have failed, and a lost write is only the pre-fix behaviour, so there is nothing to trade |
+| 2026-10-14 | The §4d durability rationale is wrong on the platform, and the join it rules out is available | Review **MAJOR 4d-1.1**. The dev's reason for not joining the failed-start settle — an unmet `startForegroundService` obligation plus a ~10 s platform timeout kill — does not hold. AOSP `ActiveServices.setServiceForegroundInnerLocked` clears `r.fgRequired` and cancels the FGS timer (`:2248-2251`) **before** every throw site a restriction, app-op, permission or API-34 FGS-type failure can reach, so a `startForeground` that throws has already discharged the obligation; where it genuinely is unmet, `bringDownServiceLocked` (`:6361-6386`) makes the *immediate* `stopSelf` crash the process rather than discharge anything; and the deadline is `DEFAULT_SERVICE_START_FOREGROUND_TIMEOUT_MS = 30 s` (+10 s before the ANR), not 10 s, identical on API 34/35/36. Verified on `android14/15/16-release` and `main`. The one-line fix itself stands; the recorded decision and the preceding §6 row do not. Either take `handleDismiss`'s deferred-teardown join in the catch, or keep the dispatch and say the true thing: there is no *foreground* state to hold once `startForeground` has failed, the wake lock **is** holdable, and this is a complexity trade rather than a platform constraint |
+| 2026-10-14 | Scope closed; §4e added | Project owner's decision to stop. 4d-1.1 accepted as a known limitation rather than fixed; its false platform justification corrected in code against AOSP so no future reader rebuilds on it. No further review rounds planned |

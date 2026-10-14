@@ -143,6 +143,12 @@ class AlarmService : Service() {
         } catch (t: Throwable) {
             // Never leave a held wake lock or a half-started foreground service behind.
             Log.e(TAG, "failed to start alarm $alarmId", t)
+            // This delivery consumed the alarm's registration whether or not it rang, so the row
+            // still has to be settled or the alarm is lost: a repeating one would never book its
+            // next occurrence and would stop existing while the list showed it armed (review
+            // **4c-2.2**). Same two halves as a refusal, for the same reason, and dispatched before
+            // `stopAlarm()` so the write starts while the wake lock is still held.
+            settleRefusedAlarm(alarmId, triggerAtMillis)
             stopAlarm()
             stopSelf(startId)
             return
@@ -216,6 +222,36 @@ class AlarmService : Service() {
      * disjoint on the same row and their order does not matter. Auto-disabling is also precisely
      * what a dismiss would have done to this row, which is what makes the list afterwards honest:
      * a one-shot that could not ring reads as off, not as armed.
+     *
+     * Called from [refuseStart] and from [handleStart]'s cancelling `catch`: in both cases the
+     * registration is spent and nothing rang, so both want exactly this.
+     *
+     * **Durability (finding 1.9, reviews 4c-2.1 and 4d-1.1).** Both halves are dispatched and
+     * **not** joined. This is a deliberate complexity trade, **not** a platform constraint — an
+     * earlier version of this comment claimed the join was impossible here and that claim was
+     * false in all three of its parts (review 4d-1.1 verified against AOSP `ActiveServices`):
+     *  - `setServiceForegroundInnerLocked` clears `fgRequired`/`fgWaiting` and cancels the FGS ANR
+     *    timer **before every throw site `startForeground` can reach**, so in the likeliest case
+     *    for this catch the obligation is already discharged and nothing can time out.
+     *  - The FGS-start deadline is 30 s, not 10 s, so a 10 s write ceiling has ample headroom.
+     *  - Where the obligation genuinely *is* unmet (a throw from [ensureChannel] or
+     *    `buildNotification`, i.e. before `startForeground` was reached), `stopSelf` is what makes
+     *    the system crash the process with `ForegroundServiceDidNotStartInTimeException` — the
+     *    opposite of discharging it. That is a separate pre-existing defect (review 4d-1.2).
+     *
+     * So the wake lock **is** holdable and [handleDismiss]'s deferred-teardown shape **is**
+     * available. It was not adopted because it costs a re-trace of Module 1's ten wake-lock paths
+     * and adds a deferred-teardown staleness surface on a new path, and because the unjoined
+     * dispatch is already strictly better than the status quo: both halves are disjoint on
+     * `isRepeating`, so a frozen write leaves the row **bit-for-bit as it was before this call
+     * existed** (no reschedule, no auto-disable) rather than in a partial state.
+     *
+     * **Known limitation, accepted by the project owner 2026-10-14.** If the write is frozen
+     * before it commits — screen off, process cached after `stopSelf`, autosuspend — a repeating
+     * alarm stays unbooked until `AlarmRepository.reconcileAll` on app open or `BootReceiver` runs.
+     * One transient `startForeground` failure can therefore cost a daily alarm more than one
+     * morning. Adopting the join is the fix if that is ever observed; see review 4d-1.1 for the
+     * exact shape and the emulator step that converts it from argument to observation.
      *
      * No "last fired" stamp: nothing rang. `AlarmHistory` is the record the diagnostics screen uses
      * to distinguish "it fires" from "nothing has ever fired", and a refused alarm firing a second
